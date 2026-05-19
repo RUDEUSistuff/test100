@@ -42,6 +42,16 @@
     setTheme(darkMode);
   });
 
+  // ========== تنظيف النص: إزالة المسافات الزائدة بين الحروف ==========
+  function cleanArabicText(text) {
+    // يزيل المسافات بين الحروف العربية
+    text = text.replace(/([ء-ي]) ([ء-ي])/g, '$1$2');
+    // يزيل المسافات المتكررة
+    text = text.replace(/\s+/g, ' ');
+    // يرجع النص النظيف
+    return text.trim();
+  }
+
   // ========== استخراج النص من PDF ==========
   async function extractPDFText(file) {
     const arrayBuffer = await file.arrayBuffer();
@@ -53,14 +63,14 @@
       const pageText = textContent.items.map(item => item.str).join(' ');
       extractedText += pageText + '\n';
     }
-    return extractedText.trim();
+    return cleanArabicText(extractedText);
   }
 
   // ========== قراءة ملف TXT ==========
   function readTXTFile(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = (e) => resolve(e.target.result);
+      reader.onload = (e) => resolve(cleanArabicText(e.target.result));
       reader.onerror = reject;
       reader.readAsText(file, 'UTF-8');
     });
@@ -99,7 +109,6 @@
     }
   });
 
-  // السحب والإفلات
   uploadArea.addEventListener('dragover', (e) => {
     e.preventDefault();
     uploadArea.classList.add('dragover');
@@ -116,6 +125,14 @@
       handleFile(e.dataTransfer.files[0]);
     }
   });
+
+  // ========== التحقق من الصوت العربي ==========
+  function getArabicVoice() {
+    const voices = speechSynth.getVoices();
+    // نبحث عن صوت عربي
+    let arabicVoice = voices.find(voice => voice.lang.startsWith('ar'));
+    return arabicVoice || null;
+  }
 
   // ========== إيقاف كل شيء ==========
   function stopSpeech() {
@@ -137,13 +154,22 @@
       alert('الرجاء رفع ملف أولاً.');
       return;
     }
+
+    // التحقق من وجود صوت عربي
+    const arabicVoice = getArabicVoice();
+    if (!arabicVoice) {
+      alert('⚠️ لا يوجد صوت عربي مثبت على جهازك.\n\nالحل:\n1. افتح إعدادات Windows\n2. اذهب إلى "الوقت واللغة" > "الكلام"\n3. ثبّت الصوت العربي');
+      return;
+    }
     
     speechSynth.cancel();
     const textToRead = fullText.substring(fromIndex);
     utterance = new SpeechSynthesisUtterance(textToRead);
     utterance.lang = 'ar-SA';
+    utterance.voice = arabicVoice; // استخدام الصوت العربي
     utterance.rate = currentRate;
-    
+    utterance.volume = 1;
+
     utterance.onboundary = (event) => {
       if (event.charIndex !== undefined) {
         currentCharIndex = fromIndex + event.charIndex;
@@ -166,9 +192,18 @@
       }
     };
 
+    utterance.onerror = (e) => {
+      console.error('خطأ في النطق:', e);
+    };
+
     speechSynth.speak(utterance);
     isPaused = false;
   }
+
+  // ========== تحميل الأصوات ==========
+  speechSynth.onvoiceschanged = () => {
+    console.log('الأصوات المتاحة:', speechSynth.getVoices().map(v => `${v.name} (${v.lang})`));
+  };
 
   // ========== الأزرار ==========
   playBtn.addEventListener('click', () => {
